@@ -16,6 +16,7 @@ import com.restaurant.dto.CheckoutRequest;
 import com.restaurant.dto.CheckoutResponse;
 import com.restaurant.dto.DraftOrderDto;
 import com.restaurant.dto.OrderDetailDto;
+import com.restaurant.dto.RejectOrderRequest;
 import com.restaurant.dto.UpdateItemStatusRequest;
 import com.restaurant.dto.UpdateOrderItemRequest;
 import com.restaurant.entity.MenuItemEntity;
@@ -419,6 +420,42 @@ public CheckoutResponse checkout(Long orderId, CheckoutRequest req) {
 
     return new CheckoutResponse(saved.getId(), orderId, total, "Thanh toán thành công. Bàn chuyển sang CLEANING.");
 }
+        @Transactional
+        public ActionResponse rejectOrder(Long orderId, RejectOrderRequest req) {
+            OrderEntity order = orderRepository.findById(orderId)
+                    .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
+
+            if (order.getStatus() != OrderStatus.DRAFT) {
+                throw new BusinessRuleException("Chỉ từ chối được order DRAFT. Hiện tại: " + order.getStatus());
+            }
+
+            // Cancel toàn bộ items của draft
+            List<OrderItemEntity> items = orderItemRepository.findByOrderIdOrderByIdAsc(orderId);
+            LocalDateTime now = LocalDateTime.now();
+
+            for (OrderItemEntity it : items) {
+                it.setStatus(ItemStatus.CANCELED);
+                it.setCanceledAt(now);
+                it.setCanceledReason(req.reason());
+                it.setUpdatedAt(Instant.now());
+            }
+            orderItemRepository.saveAll(items);
+
+            // Cancel order
+            order.setStatus(OrderStatus.CANCELED);
+            order.setCanceledAt(now);
+            orderRepository.save(order);
+
+            // Clear current_order_id để khách có thể submit lại
+            TableEntity table = tableRepository.findById(order.getTableId())
+                    .orElseThrow(() -> new NotFoundException("Không tìm thấy bàn id=" + order.getTableId()));
+            if (table.getCurrentOrderId() != null && table.getCurrentOrderId().equals(orderId)) {
+                table.setCurrentOrderId(null);
+                tableRepository.save(table);
+            }
+
+            return new ActionResponse("Đã từ chối yêu cầu order. Lý do: " + req.reason());
+        }
 
 
 }

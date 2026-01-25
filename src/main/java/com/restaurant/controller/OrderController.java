@@ -17,6 +17,7 @@ import com.restaurant.dto.CheckoutRequest;
 import com.restaurant.dto.CheckoutResponse;
 import com.restaurant.dto.DraftOrderDto;
 import com.restaurant.dto.OrderDetailDto;
+import com.restaurant.dto.RejectOrderRequest;
 import com.restaurant.dto.UpdateItemStatusRequest;
 import com.restaurant.dto.UpdateOrderItemRequest;
 import com.restaurant.service.OrderService;
@@ -75,6 +76,10 @@ public class OrderController {
     @PostMapping("/{orderId}/checkout")
     public CheckoutResponse checkout(@PathVariable Long orderId, @Valid @RequestBody CheckoutRequest req) {
         return orderService.checkout(orderId, req);
+    }
+    @PostMapping("/{orderId}/reject")
+    public ActionResponse reject(@PathVariable Long orderId, @Valid @RequestBody RejectOrderRequest req) {
+        return orderService.rejectOrder(orderId, req);
     }
 
 
