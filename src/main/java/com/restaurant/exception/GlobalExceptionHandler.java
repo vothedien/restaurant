@@ -23,7 +23,6 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ActionResponse> handleOther(Exception ex) {
-        // Dev: bạn có thể log ex.printStackTrace() để debug
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ActionResponse("Internal Server Error: " + ex.getMessage()));
     }

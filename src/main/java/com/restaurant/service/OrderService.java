@@ -45,17 +45,16 @@ public class OrderService {
     private final PaymentRepository paymentRepository;
 
     public OrderService(OrderRepository orderRepository,
-                    OrderItemRepository orderItemRepository,
-                    TableRepository tableRepository,
-                    MenuItemRepository menuItemRepository,
-                    PaymentRepository paymentRepository) {
-    this.orderRepository = orderRepository;
-    this.orderItemRepository = orderItemRepository;
-    this.tableRepository = tableRepository;
-    this.menuItemRepository = menuItemRepository;
-    this.paymentRepository = paymentRepository;
-}
-
+                        OrderItemRepository orderItemRepository,
+                        TableRepository tableRepository,
+                        MenuItemRepository menuItemRepository,
+                        PaymentRepository paymentRepository) {
+        this.orderRepository = orderRepository;
+        this.orderItemRepository = orderItemRepository;
+        this.tableRepository = tableRepository;
+        this.menuItemRepository = menuItemRepository;
+        this.paymentRepository = paymentRepository;
+    }
 
     // =========================
     // 1) Waiter xem order DRAFT theo bàn
@@ -118,7 +117,7 @@ public class OrderService {
     }
 
     // =========================
-    // 3) CRUD món cho order ACTIVE
+    // 3) CRUD món cho order DRAFT hoặc ACTIVE  ✅ (FIX)
     // =========================
 
     @Transactional
@@ -126,8 +125,9 @@ public class OrderService {
         OrderEntity order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
 
-        if (order.getStatus() != OrderStatus.ACTIVE) {
-            throw new BusinessRuleException("Chỉ thêm món khi order ACTIVE. Hiện tại: " + order.getStatus());
+        // ✅ Cho phép thêm món khi DRAFT hoặc ACTIVE
+        if (order.getStatus() != OrderStatus.DRAFT && order.getStatus() != OrderStatus.ACTIVE) {
+            throw new BusinessRuleException("Chỉ thêm món khi order DRAFT hoặc ACTIVE. Hiện tại: " + order.getStatus());
         }
 
         MenuItemEntity mi = menuItemRepository.findByIdAndIsAvailableTrue(req.menuItemId())
@@ -141,9 +141,14 @@ public class OrderService {
         item.setQty(req.qty());
         item.setNote(req.note());
 
-        // Waiter thêm món => mặc định đang xử lý
-        // Nếu bạn muốn waiter thêm rồi mới "Send to kitchen" thì đổi thành ItemStatus.DRAFT
-        item.setStatus(ItemStatus.PENDING);
+        // ✅ DRAFT: item DRAFT (chờ confirm)
+        // ✅ ACTIVE: item PENDING (coi như đã gửi chế biến), và set sentAt
+        if (order.getStatus() == OrderStatus.DRAFT) {
+            item.setStatus(ItemStatus.DRAFT);
+        } else {
+            item.setStatus(ItemStatus.PENDING);
+            item.setSentAt(LocalDateTime.now());
+        }
 
         item.setCreatedAt(Instant.now());
         item.setUpdatedAt(Instant.now());
@@ -157,8 +162,9 @@ public class OrderService {
         OrderEntity order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
 
-        if (order.getStatus() != OrderStatus.ACTIVE) {
-            throw new BusinessRuleException("Chỉ sửa món khi order ACTIVE. Hiện tại: " + order.getStatus());
+        // ✅ Cho phép sửa khi DRAFT hoặc ACTIVE
+        if (order.getStatus() != OrderStatus.DRAFT && order.getStatus() != OrderStatus.ACTIVE) {
+            throw new BusinessRuleException("Chỉ sửa món khi order DRAFT hoặc ACTIVE. Hiện tại: " + order.getStatus());
         }
 
         OrderItemEntity item = orderItemRepository.findById(itemId)
@@ -168,9 +174,14 @@ public class OrderService {
             throw new BusinessRuleException("Item không thuộc order này.");
         }
 
-        // Chặn sửa khi món đã hoàn tất/huỷ
-        if (item.getStatus() == ItemStatus.READY || item.getStatus() == ItemStatus.SERVED || item.getStatus() == ItemStatus.CANCELED) {
-            throw new BusinessRuleException("Không thể sửa món khi đang ở trạng thái: " + item.getStatus());
+        // ✅ Nếu ACTIVE thì chặn sửa khi món đã vào giai đoạn làm/ra/huỷ
+        if (order.getStatus() == OrderStatus.ACTIVE) {
+            if (item.getStatus() == ItemStatus.COOKING
+                    || item.getStatus() == ItemStatus.READY
+                    || item.getStatus() == ItemStatus.SERVED
+                    || item.getStatus() == ItemStatus.CANCELED) {
+                throw new BusinessRuleException("Không thể sửa món khi đang ở trạng thái: " + item.getStatus());
+            }
         }
 
         item.setQty(req.qty());
@@ -186,8 +197,9 @@ public class OrderService {
         OrderEntity order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
 
-        if (order.getStatus() != OrderStatus.ACTIVE) {
-            throw new BusinessRuleException("Chỉ xoá món khi order ACTIVE. Hiện tại: " + order.getStatus());
+        // ✅ Cho phép xoá khi DRAFT hoặc ACTIVE
+        if (order.getStatus() != OrderStatus.DRAFT && order.getStatus() != OrderStatus.ACTIVE) {
+            throw new BusinessRuleException("Chỉ xoá món khi order DRAFT hoặc ACTIVE. Hiện tại: " + order.getStatus());
         }
 
         OrderItemEntity item = orderItemRepository.findById(itemId)
@@ -197,265 +209,270 @@ public class OrderService {
             throw new BusinessRuleException("Item không thuộc order này.");
         }
 
-        // Chặn xoá nếu đã READY/SERVED
-        if (item.getStatus() == ItemStatus.READY || item.getStatus() == ItemStatus.SERVED) {
-            throw new BusinessRuleException("Không thể xoá món khi đang ở trạng thái: " + item.getStatus());
+        // ✅ Nếu ACTIVE thì chặn xoá khi món đã READY/SERVED (có thể thêm COOKING nếu bạn muốn)
+        if (order.getStatus() == OrderStatus.ACTIVE) {
+            if (item.getStatus() == ItemStatus.READY || item.getStatus() == ItemStatus.SERVED) {
+                throw new BusinessRuleException("Không thể xoá món khi đang ở trạng thái: " + item.getStatus());
+            }
         }
 
         orderItemRepository.delete(item);
         return new ActionResponse("Đã xoá món khỏi order.");
-    } 
+    }
+
+    // =========================
+    // 4) Order detail
+    // =========================
     public OrderDetailDto getOrderDetail(Long orderId) {
-    OrderEntity order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
+        OrderEntity order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
 
-    List<OrderItemEntity> items = orderItemRepository.findByOrderIdOrderByIdAsc(order.getId());
+        List<OrderItemEntity> items = orderItemRepository.findByOrderIdOrderByIdAsc(order.getId());
 
-    return new OrderDetailDto(
-            order.getId(),
-            order.getTableId(),
-            order.getStatus(),
-            order.getNote(),
-            items.stream().map(i -> new OrderDetailDto.ItemDto(
-                    i.getId(),
-                    i.getMenuItemId(),
-                    i.getItemNameSnapshot(),
-                    i.getUnitPriceSnapshot(),
-                    i.getQty(),
-                    i.getNote(),
-                    i.getStatus()
-            )).toList()
-    );
-} 
-@Transactional
-public ActionResponse updateItemStatus(Long orderId, Long itemId, UpdateItemStatusRequest req) {
-    OrderEntity order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
-
-    if (order.getStatus() != OrderStatus.ACTIVE) {
-        throw new BusinessRuleException("Chỉ cập nhật trạng thái món khi order ACTIVE. Hiện tại: " + order.getStatus());
-    }
-
-    OrderItemEntity item = orderItemRepository.findById(itemId)
-            .orElseThrow(() -> new NotFoundException("Không tìm thấy item id=" + itemId));
-
-    if (!item.getOrderId().equals(orderId)) {
-        throw new BusinessRuleException("Item không thuộc order này.");
-    }
-
-    ItemStatus from = item.getStatus();
-    ItemStatus to = req.newStatus();
-
-    validateItemStatusTransition(from, to);
-
-    // set timestamp theo trạng thái mới
-    LocalDateTime now = LocalDateTime.now();
-    switch (to) {
-        case PENDING -> item.setSentAt(now);
-        case COOKING -> item.setCookingAt(now);
-        case READY -> item.setReadyAt(now);
-        case SERVED -> item.setServedAt(now);
-        case CANCELED -> {
-            item.setCanceledAt(now);
-            if (req.cancelReason() != null && !req.cancelReason().isBlank()) {
-                item.setCanceledReason(req.cancelReason());
-            } else if (item.getCanceledReason() == null) {
-                item.setCanceledReason("Không có lý do");
-            }
-        }
-        default -> {  }
-    }
-
-    item.setStatus(to);
-    item.setUpdatedAt(Instant.now());
-    orderItemRepository.save(item);
-
-    return new ActionResponse("Đã đổi trạng thái món từ " + from + " -> " + to);
-}
-
-private void validateItemStatusTransition(ItemStatus from, ItemStatus to) {
-    if (from == to) return;
-
-    if (to == ItemStatus.DRAFT) {
-        throw new BusinessRuleException("Không thể chuyển về DRAFT.");
-    }
-
-    if (from == ItemStatus.SERVED) {
-        throw new BusinessRuleException("Món đã SERVED, không thể đổi trạng thái.");
-    }
-    if (from == ItemStatus.CANCELED) {
-        throw new BusinessRuleException("Món đã CANCELED, không thể đổi trạng thái.");
-    }
-
-    boolean ok =
-            (from == ItemStatus.DRAFT   && to == ItemStatus.PENDING) ||
-            (from == ItemStatus.PENDING && (to == ItemStatus.COOKING || to == ItemStatus.CANCELED)) ||
-            (from == ItemStatus.COOKING && (to == ItemStatus.READY   || to == ItemStatus.CANCELED)) ||
-            (from == ItemStatus.READY   && to == ItemStatus.SERVED);
-
-    if (!ok) {
-        throw new BusinessRuleException("Chuyển trạng thái không hợp lệ: " + from + " -> " + to);
-    }
-
-    if (to == ItemStatus.CANCELED) {
-    
-    }
-}
-public BillDto getBill(Long orderId) {
-    OrderEntity order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
-
-    List<OrderItemEntity> items = orderItemRepository.findByOrderIdOrderByIdAsc(orderId);
-
-    // Tính bill trên các món không bị CANCELED
-    List<BillDto.BillItemDto> billItems = items.stream()
-            .filter(i -> i.getStatus() != ItemStatus.CANCELED)
-            .map(i -> {
-                BigDecimal lineTotal = i.getUnitPriceSnapshot()
-                        .multiply(BigDecimal.valueOf(i.getQty()))
-                        .setScale(2, RoundingMode.HALF_UP);
-                return new BillDto.BillItemDto(
+        return new OrderDetailDto(
+                order.getId(),
+                order.getTableId(),
+                order.getStatus(),
+                order.getNote(),
+                items.stream().map(i -> new OrderDetailDto.ItemDto(
                         i.getId(),
+                        i.getMenuItemId(),
                         i.getItemNameSnapshot(),
                         i.getUnitPriceSnapshot(),
                         i.getQty(),
-                        lineTotal,
+                        i.getNote(),
                         i.getStatus()
-                );
-            })
-            .toList();
-
-    BigDecimal subtotal = billItems.stream()
-            .map(BillDto.BillItemDto::lineTotal)
-            .reduce(BigDecimal.ZERO, BigDecimal::add)
-            .setScale(2, RoundingMode.HALF_UP);
-
-    // MVP: mặc định 0 (bill endpoint chỉ hiển thị subtotal)
-    BigDecimal discount = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-    BigDecimal tax = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-    BigDecimal serviceFee = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-
-    BigDecimal total = subtotal.subtract(discount).add(tax).add(serviceFee)
-            .max(BigDecimal.ZERO)
-            .setScale(2, RoundingMode.HALF_UP);
-
-    return new BillDto(
-            order.getId(),
-            order.getTableId(),
-            order.getStatus(),
-            billItems,
-            subtotal,
-            discount,
-            tax,
-            serviceFee,
-            total
-    );
-}
-
-@Transactional
-public CheckoutResponse checkout(Long orderId, CheckoutRequest req) {
-    OrderEntity order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
-
-    if (order.getStatus() != OrderStatus.ACTIVE) {
-        throw new BusinessRuleException("Chỉ checkout được order ACTIVE. Hiện tại: " + order.getStatus());
+                )).toList()
+        );
     }
 
-    // Chặn checkout 2 lần
-    if (paymentRepository.findByOrderId(orderId).isPresent()) {
-        throw new BusinessRuleException("Order đã được thanh toán trước đó.");
-    }
+    // =========================
+    // 5) Update item status (ACTIVE only)
+    // =========================
+    @Transactional
+    public ActionResponse updateItemStatus(Long orderId, Long itemId, UpdateItemStatusRequest req) {
+        OrderEntity order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
 
-    // Tính subtotal từ snapshot price
-    List<OrderItemEntity> items = orderItemRepository.findByOrderIdOrderByIdAsc(orderId)
-            .stream()
-            .filter(i -> i.getStatus() != ItemStatus.CANCELED)
-            .toList();
-
-    if (items.isEmpty()) {
-        throw new BusinessRuleException("Order không có món hợp lệ để thanh toán.");
-    }
-
-    BigDecimal subtotal = items.stream()
-            .map(i -> i.getUnitPriceSnapshot().multiply(BigDecimal.valueOf(i.getQty())))
-            .reduce(BigDecimal.ZERO, BigDecimal::add)
-            .setScale(2, RoundingMode.HALF_UP);
-
-    BigDecimal discount = (req.discountAmount() == null ? BigDecimal.ZERO : req.discountAmount()).setScale(2, RoundingMode.HALF_UP);
-    BigDecimal tax = (req.taxAmount() == null ? BigDecimal.ZERO : req.taxAmount()).setScale(2, RoundingMode.HALF_UP);
-    BigDecimal serviceFee = (req.serviceFeeAmount() == null ? BigDecimal.ZERO : req.serviceFeeAmount()).setScale(2, RoundingMode.HALF_UP);
-
-    if (discount.compareTo(subtotal) > 0) {
-        throw new BusinessRuleException("Discount không được lớn hơn subtotal.");
-    }
-
-    BigDecimal total = subtotal.subtract(discount).add(tax).add(serviceFee)
-            .max(BigDecimal.ZERO)
-            .setScale(2, RoundingMode.HALF_UP);
-
-    PaymentEntity payment = new PaymentEntity();
-    payment.setOrderId(orderId);
-    payment.setSubtotal(subtotal);
-    payment.setDiscountAmount(discount);
-    payment.setTaxAmount(tax);
-    payment.setServiceFeeAmount(serviceFee);
-    payment.setTotalAmount(total);
-    payment.setMethod(req.method());
-    payment.setPaidAt(LocalDateTime.now());
-
-    PaymentEntity saved = paymentRepository.save(payment);
-
-    // Đóng order
-    order.setStatus(OrderStatus.COMPLETED);
-    order.setCompletedAt(LocalDateTime.now());
-    orderRepository.save(order);
-
-    // Update bàn -> CLEANING + clear current_order_id
-    TableEntity table = tableRepository.findById(order.getTableId())
-            .orElseThrow(() -> new NotFoundException("Không tìm thấy bàn của order."));
-
-    table.setStatus(TableStatus.CLEANING);
-    table.setCurrentOrderId(null);
-    tableRepository.save(table);
-
-    return new CheckoutResponse(saved.getId(), orderId, total, "Thanh toán thành công. Bàn chuyển sang CLEANING.");
-}
-        @Transactional
-        public ActionResponse rejectOrder(Long orderId, RejectOrderRequest req) {
-            OrderEntity order = orderRepository.findById(orderId)
-                    .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
-
-            if (order.getStatus() != OrderStatus.DRAFT) {
-                throw new BusinessRuleException("Chỉ từ chối được order DRAFT. Hiện tại: " + order.getStatus());
-            }
-
-            // Cancel toàn bộ items của draft
-            List<OrderItemEntity> items = orderItemRepository.findByOrderIdOrderByIdAsc(orderId);
-            LocalDateTime now = LocalDateTime.now();
-
-            for (OrderItemEntity it : items) {
-                it.setStatus(ItemStatus.CANCELED);
-                it.setCanceledAt(now);
-                it.setCanceledReason(req.reason());
-                it.setUpdatedAt(Instant.now());
-            }
-            orderItemRepository.saveAll(items);
-
-            // Cancel order
-            order.setStatus(OrderStatus.CANCELED);
-            order.setCanceledAt(now);
-            orderRepository.save(order);
-
-            // Clear current_order_id để khách có thể submit lại
-            TableEntity table = tableRepository.findById(order.getTableId())
-                    .orElseThrow(() -> new NotFoundException("Không tìm thấy bàn id=" + order.getTableId()));
-            if (table.getCurrentOrderId() != null && table.getCurrentOrderId().equals(orderId)) {
-                table.setCurrentOrderId(null);
-                tableRepository.save(table);
-            }
-
-            return new ActionResponse("Đã từ chối yêu cầu order. Lý do: " + req.reason());
+        if (order.getStatus() != OrderStatus.ACTIVE) {
+            throw new BusinessRuleException("Chỉ cập nhật trạng thái món khi order ACTIVE. Hiện tại: " + order.getStatus());
         }
 
+        OrderItemEntity item = orderItemRepository.findById(itemId)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy item id=" + itemId));
 
+        if (!item.getOrderId().equals(orderId)) {
+            throw new BusinessRuleException("Item không thuộc order này.");
+        }
+
+        ItemStatus from = item.getStatus();
+        ItemStatus to = req.newStatus();
+
+        validateItemStatusTransition(from, to);
+
+        LocalDateTime now = LocalDateTime.now();
+        switch (to) {
+            case PENDING -> item.setSentAt(now);
+            case COOKING -> item.setCookingAt(now);
+            case READY -> item.setReadyAt(now);
+            case SERVED -> item.setServedAt(now);
+            case CANCELED -> {
+                item.setCanceledAt(now);
+                if (req.cancelReason() != null && !req.cancelReason().isBlank()) {
+                    item.setCanceledReason(req.cancelReason());
+                } else if (item.getCanceledReason() == null) {
+                    item.setCanceledReason("Không có lý do");
+                }
+            }
+            default -> { }
+        }
+
+        item.setStatus(to);
+        item.setUpdatedAt(Instant.now());
+        orderItemRepository.save(item);
+
+        return new ActionResponse("Đã đổi trạng thái món từ " + from + " -> " + to);
+    }
+
+    private void validateItemStatusTransition(ItemStatus from, ItemStatus to) {
+        if (from == to) return;
+
+        if (to == ItemStatus.DRAFT) {
+            throw new BusinessRuleException("Không thể chuyển về DRAFT.");
+        }
+
+        if (from == ItemStatus.SERVED) {
+            throw new BusinessRuleException("Món đã SERVED, không thể đổi trạng thái.");
+        }
+        if (from == ItemStatus.CANCELED) {
+            throw new BusinessRuleException("Món đã CANCELED, không thể đổi trạng thái.");
+        }
+
+        boolean ok =
+                (from == ItemStatus.DRAFT   && to == ItemStatus.PENDING) ||
+                (from == ItemStatus.PENDING && (to == ItemStatus.COOKING || to == ItemStatus.CANCELED)) ||
+                (from == ItemStatus.COOKING && (to == ItemStatus.READY   || to == ItemStatus.CANCELED)) ||
+                (from == ItemStatus.READY   && to == ItemStatus.SERVED);
+
+        if (!ok) {
+            throw new BusinessRuleException("Chuyển trạng thái không hợp lệ: " + from + " -> " + to);
+        }
+    }
+
+    // =========================
+    // 6) Bill
+    // =========================
+    public BillDto getBill(Long orderId) {
+        OrderEntity order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
+
+        List<OrderItemEntity> items = orderItemRepository.findByOrderIdOrderByIdAsc(orderId);
+
+        List<BillDto.BillItemDto> billItems = items.stream()
+                .filter(i -> i.getStatus() != ItemStatus.CANCELED)
+                .map(i -> {
+                    BigDecimal lineTotal = i.getUnitPriceSnapshot()
+                            .multiply(BigDecimal.valueOf(i.getQty()))
+                            .setScale(2, RoundingMode.HALF_UP);
+                    return new BillDto.BillItemDto(
+                            i.getId(),
+                            i.getItemNameSnapshot(),
+                            i.getUnitPriceSnapshot(),
+                            i.getQty(),
+                            lineTotal,
+                            i.getStatus()
+                    );
+                })
+                .toList();
+
+        BigDecimal subtotal = billItems.stream()
+                .map(BillDto.BillItemDto::lineTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal discount = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal tax = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal serviceFee = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal total = subtotal.subtract(discount).add(tax).add(serviceFee)
+                .max(BigDecimal.ZERO)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        return new BillDto(
+                order.getId(),
+                order.getTableId(),
+                order.getStatus(),
+                billItems,
+                subtotal,
+                discount,
+                tax,
+                serviceFee,
+                total
+        );
+    }
+
+    // =========================
+    // 7) Checkout
+    // =========================
+    @Transactional
+    public CheckoutResponse checkout(Long orderId, CheckoutRequest req) {
+        OrderEntity order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
+
+        if (order.getStatus() != OrderStatus.ACTIVE) {
+            throw new BusinessRuleException("Chỉ checkout được order ACTIVE. Hiện tại: " + order.getStatus());
+        }
+
+        if (paymentRepository.findByOrderId(orderId).isPresent()) {
+            throw new BusinessRuleException("Order đã được thanh toán trước đó.");
+        }
+
+        List<OrderItemEntity> items = orderItemRepository.findByOrderIdOrderByIdAsc(orderId)
+                .stream()
+                .filter(i -> i.getStatus() != ItemStatus.CANCELED)
+                .toList();
+
+        if (items.isEmpty()) {
+            throw new BusinessRuleException("Order không có món hợp lệ để thanh toán.");
+        }
+
+        BigDecimal subtotal = items.stream()
+                .map(i -> i.getUnitPriceSnapshot().multiply(BigDecimal.valueOf(i.getQty())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal discount = (req.discountAmount() == null ? BigDecimal.ZERO : req.discountAmount()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal tax = (req.taxAmount() == null ? BigDecimal.ZERO : req.taxAmount()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal serviceFee = (req.serviceFeeAmount() == null ? BigDecimal.ZERO : req.serviceFeeAmount()).setScale(2, RoundingMode.HALF_UP);
+
+        if (discount.compareTo(subtotal) > 0) {
+            throw new BusinessRuleException("Discount không được lớn hơn subtotal.");
+        }
+
+        BigDecimal total = subtotal.subtract(discount).add(tax).add(serviceFee)
+                .max(BigDecimal.ZERO)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        PaymentEntity payment = new PaymentEntity();
+        payment.setOrderId(orderId);
+        payment.setSubtotal(subtotal);
+        payment.setDiscountAmount(discount);
+        payment.setTaxAmount(tax);
+        payment.setServiceFeeAmount(serviceFee);
+        payment.setTotalAmount(total);
+        payment.setMethod(req.method());
+        payment.setPaidAt(LocalDateTime.now());
+
+        PaymentEntity saved = paymentRepository.save(payment);
+
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setCompletedAt(LocalDateTime.now());
+        orderRepository.save(order);
+
+        TableEntity table = tableRepository.findById(order.getTableId())
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy bàn của order."));
+
+        table.setStatus(TableStatus.CLEANING);
+        table.setCurrentOrderId(null);
+        tableRepository.save(table);
+
+        return new CheckoutResponse(saved.getId(), orderId, total, "Thanh toán thành công. Bàn chuyển sang CLEANING.");
+    }
+
+    // =========================
+    // 8) Reject order (DRAFT -> CANCELED)
+    // =========================
+    @Transactional
+    public ActionResponse rejectOrder(Long orderId, RejectOrderRequest req) {
+        OrderEntity order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
+
+        if (order.getStatus() != OrderStatus.DRAFT) {
+            throw new BusinessRuleException("Chỉ từ chối được order DRAFT. Hiện tại: " + order.getStatus());
+        }
+
+        List<OrderItemEntity> items = orderItemRepository.findByOrderIdOrderByIdAsc(orderId);
+        LocalDateTime now = LocalDateTime.now();
+
+        for (OrderItemEntity it : items) {
+            it.setStatus(ItemStatus.CANCELED);
+            it.setCanceledAt(now);
+            it.setCanceledReason(req.reason());
+            it.setUpdatedAt(Instant.now());
+        }
+        orderItemRepository.saveAll(items);
+
+        order.setStatus(OrderStatus.CANCELED);
+        order.setCanceledAt(now);
+        orderRepository.save(order);
+
+        TableEntity table = tableRepository.findById(order.getTableId())
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy bàn id=" + order.getTableId()));
+        if (table.getCurrentOrderId() != null && table.getCurrentOrderId().equals(orderId)) {
+            table.setCurrentOrderId(null);
+            tableRepository.save(table);
+        }
+
+        return new ActionResponse("Đã từ chối yêu cầu order. Lý do: " + req.reason());
+    }
 }

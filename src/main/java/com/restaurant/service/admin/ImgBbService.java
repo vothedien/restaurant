@@ -1,17 +1,21 @@
 package com.restaurant.service.admin;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.restaurant.exception.BusinessRuleException;
+import java.util.Base64;
+
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.Base64;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.restaurant.exception.BusinessRuleException;
 
 @Service
 public class ImgBbService {
@@ -34,7 +38,6 @@ public class ImgBbService {
             throw new BusinessRuleException("File ảnh rỗng.");
         }
 
-        // ImgBB limit 32MB (theo docs) :contentReference[oaicite:2]{index=2}
         long maxBytes = 32L * 1024 * 1024;
         if (file.getSize() > maxBytes) {
             throw new BusinessRuleException("Ảnh vượt quá 32MB.");
@@ -48,7 +51,6 @@ public class ImgBbService {
         try {
             String base64 = Base64.getEncoder().encodeToString(file.getBytes());
 
-            // ImgBB API: POST /1/upload?key=... ; body: image=base64 :contentReference[oaicite:3]{index=3}
             String url = "https://api.imgbb.com/1/upload?key=" + apiKey;
 
             HttpHeaders headers = new HttpHeaders();
@@ -56,7 +58,6 @@ public class ImgBbService {
 
             MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
             form.add("image", base64);
-            // optional: name/expiration theo docs (nếu muốn) :contentReference[oaicite:4]{index=4}
 
             HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(form, headers);
             ResponseEntity<String> resp = restTemplate.postForEntity(url, entity, String.class);
@@ -73,11 +74,9 @@ public class ImgBbService {
 
             JsonNode data = root.path("data");
             String displayUrl = data.path("display_url").asText(null);
-            String urlDirect = data.path("url").asText(null); // một số tutorial lấy data.url :contentReference[oaicite:5]{index=5}
-
+            String urlDirect = data.path("url").asText(null); 
             String chosen = useDisplayUrl ? displayUrl : urlDirect;
             if (chosen == null || chosen.isBlank()) {
-                // fallback
                 chosen = (displayUrl != null && !displayUrl.isBlank()) ? displayUrl : urlDirect;
             }
             if (chosen == null || chosen.isBlank()) {

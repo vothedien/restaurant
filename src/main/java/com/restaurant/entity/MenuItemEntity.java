@@ -35,7 +35,7 @@ public class MenuItemEntity {
     private Boolean isAvailable = true;
 
     @Column(name = "image_url", length = 500)
-    private String imageUrl; // VD: /uploads/menu/12_abcd.jpg
+    private String imageUrl; 
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
