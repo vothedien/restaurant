@@ -439,9 +439,7 @@ public class OrderService {
         return new CheckoutResponse(saved.getId(), orderId, total, "Thanh toán thành công. Bàn chuyển sang CLEANING.");
     }
 
-    // =========================
-    // 8) Reject order (DRAFT -> CANCELED)
-    // =========================
+ 
     @Transactional
     public ActionResponse rejectOrder(Long orderId, RejectOrderRequest req) {
         OrderEntity order = orderRepository.findById(orderId)

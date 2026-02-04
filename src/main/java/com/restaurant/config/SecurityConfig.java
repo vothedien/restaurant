@@ -22,25 +22,27 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
            .authorizeHttpRequests(auth -> auth
-            .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-            // Public
-            .requestMatchers("/api/health", "/api/public/**").permitAll()
-            .requestMatchers(HttpMethod.GET, "/api/menu/**").permitAll()
+                // Public
+                .requestMatchers("/api/health", "/api/public/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/menu/**").permitAll()
 
-            // ADMIN
-            .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                // Auth check (login thật)
+                .requestMatchers(HttpMethod.GET, "/api/me").hasAnyRole("ADMIN","WAITER","CASHIER")
 
-            // CASHIER - đặt TRƯỚC orders/**
-            .requestMatchers(HttpMethod.POST, "/api/orders/*/checkout").hasAnyRole("CASHIER", "ADMIN")
-            .requestMatchers(HttpMethod.GET, "/api/orders/*/bill").hasAnyRole("CASHIER", "WAITER", "ADMIN")
+                // ADMIN
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
-            // WAITER
-            .requestMatchers("/api/tables/**").hasAnyRole("CASHIER", "WAITER", "ADMIN")
-            .requestMatchers("/api/orders/**").hasAnyRole("CASHIER", "WAITER", "ADMIN")
+                .requestMatchers(HttpMethod.GET,  "/api/orders/*/bill").hasAnyRole("CASHIER","ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/orders/*/checkout").hasAnyRole("CASHIER","ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/orders/*/items/*/status").hasAnyRole("CASHIER","WAITER","ADMIN")
 
-            .anyRequest().authenticated()
-        )
+                .requestMatchers("/api/tables/**").hasAnyRole("CASHIER" ,"WAITER","ADMIN")
+                .requestMatchers("/api/orders/**").hasAnyRole("CASHIER","WAITER","ADMIN")
+
+                .anyRequest().authenticated()
+            )
             .httpBasic(Customizer.withDefaults());
 
         return http.build();
