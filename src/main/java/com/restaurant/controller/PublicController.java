@@ -36,7 +36,6 @@ public class PublicController {
         this.publicOrderingService = publicOrderingService;
     }
 
-    // Khách mở link -> lấy thông tin bàn
     @GetMapping("/tables/{token}")
     public PublicTableInfoDto getTableByToken(@PathVariable String token) {
         TableEntity t = tableRepository.findByQrToken(token)
@@ -44,7 +43,6 @@ public class PublicController {
         return new PublicTableInfoDto(t.getId(), t.getCode(), t.getStatus());
     }
 
-    // Menu public (có imageUrl)
     @GetMapping("/menu")
     public List<PublicMenuItemDto> getMenu() {
         return menuItemRepository.findAll().stream()
@@ -54,12 +52,11 @@ public class PublicController {
                         m.getName(),
                         m.getPrice(),
                         m.getIsAvailable(),
-                        m.getImageUrl()   // bạn đang dùng image_url
+                        m.getImageUrl()    
                 ))
                 .toList();
     }
 
-    // Khách submit order DRAFT theo token
     @PostMapping("/tables/{token}/submit")
     public SubmitOrderResponse submit(@PathVariable String token, @Valid @RequestBody SubmitOrderRequest req) {
         return publicOrderingService.submitByToken(token, req);

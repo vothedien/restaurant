@@ -48,7 +48,6 @@ public class AdminMenuService {
     }
 
     public List<AdminMenuItemDto> listMenuItems() {
-        // map category id -> name để trả về kèm categoryName
         var catMap = categoryRepo.findAll().stream().collect(java.util.stream.Collectors.toMap(
                 MenuCategoryEntity::getId, MenuCategoryEntity::getName
         ));

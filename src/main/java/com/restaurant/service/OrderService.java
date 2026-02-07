@@ -56,9 +56,6 @@ public class OrderService {
         this.paymentRepository = paymentRepository;
     }
 
-    // =========================
-    // 1) Waiter xem order DRAFT theo bàn
-    // =========================
     public DraftOrderDto getDraftOrderByTable(Long tableId) {
         TableEntity table = tableRepository.findById(tableId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy bàn id=" + tableId));
@@ -68,7 +65,7 @@ public class OrderService {
         }
 
         OrderEntity order = orderRepository.findById(table.getCurrentOrderId())
-                .orElseThrow(() -> new NotFoundException("Không tìm thấy order hiện tại của bàn."));
+.orElseThrow(() -> new NotFoundException("Không tìm thấy order hiện tại của bàn."));
 
         if (order.getStatus() != OrderStatus.DRAFT) {
             throw new BusinessRuleException("Order hiện tại không phải DRAFT (đang là " + order.getStatus() + ")");
@@ -93,9 +90,6 @@ public class OrderService {
         );
     }
 
-    // =========================
-    // 2) Waiter confirm: DRAFT -> ACTIVE
-    // =========================
     @Transactional
     public ActionResponse confirmOrder(Long orderId) {
         OrderEntity order = orderRepository.findById(orderId)
@@ -116,16 +110,13 @@ public class OrderService {
         return new ActionResponse("Đã xác nhận order. Order chuyển sang ACTIVE.");
     }
 
-    // =========================
-    // 3) CRUD món cho order DRAFT hoặc ACTIVE  ✅ (FIX)
-    // =========================
+
 
     @Transactional
     public ActionResponse addItem(Long orderId, AddOrderItemRequest req) {
         OrderEntity order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
 
-        // ✅ Cho phép thêm món khi DRAFT hoặc ACTIVE
         if (order.getStatus() != OrderStatus.DRAFT && order.getStatus() != OrderStatus.ACTIVE) {
             throw new BusinessRuleException("Chỉ thêm món khi order DRAFT hoặc ACTIVE. Hiện tại: " + order.getStatus());
         }
@@ -136,13 +127,11 @@ public class OrderService {
         OrderItemEntity item = new OrderItemEntity();
         item.setOrderId(order.getId());
         item.setMenuItemId(mi.getId());
-        item.setItemNameSnapshot(mi.getName());
+item.setItemNameSnapshot(mi.getName());
         item.setUnitPriceSnapshot(mi.getPrice());
         item.setQty(req.qty());
         item.setNote(req.note());
 
-        // ✅ DRAFT: item DRAFT (chờ confirm)
-        // ✅ ACTIVE: item PENDING (coi như đã gửi chế biến), và set sentAt
         if (order.getStatus() == OrderStatus.DRAFT) {
             item.setStatus(ItemStatus.DRAFT);
         } else {
@@ -162,7 +151,6 @@ public class OrderService {
         OrderEntity order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
 
-        // ✅ Cho phép sửa khi DRAFT hoặc ACTIVE
         if (order.getStatus() != OrderStatus.DRAFT && order.getStatus() != OrderStatus.ACTIVE) {
             throw new BusinessRuleException("Chỉ sửa món khi order DRAFT hoặc ACTIVE. Hiện tại: " + order.getStatus());
         }
@@ -174,7 +162,6 @@ public class OrderService {
             throw new BusinessRuleException("Item không thuộc order này.");
         }
 
-        // ✅ Nếu ACTIVE thì chặn sửa khi món đã vào giai đoạn làm/ra/huỷ
         if (order.getStatus() == OrderStatus.ACTIVE) {
             if (item.getStatus() == ItemStatus.COOKING
                     || item.getStatus() == ItemStatus.READY
@@ -197,19 +184,17 @@ public class OrderService {
         OrderEntity order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
 
-        // ✅ Cho phép xoá khi DRAFT hoặc ACTIVE
         if (order.getStatus() != OrderStatus.DRAFT && order.getStatus() != OrderStatus.ACTIVE) {
             throw new BusinessRuleException("Chỉ xoá món khi order DRAFT hoặc ACTIVE. Hiện tại: " + order.getStatus());
         }
 
         OrderItemEntity item = orderItemRepository.findById(itemId)
-                .orElseThrow(() -> new NotFoundException("Không tìm thấy item id=" + itemId));
+.orElseThrow(() -> new NotFoundException("Không tìm thấy item id=" + itemId));
 
         if (!item.getOrderId().equals(orderId)) {
             throw new BusinessRuleException("Item không thuộc order này.");
         }
 
-        // ✅ Nếu ACTIVE thì chặn xoá khi món đã READY/SERVED (có thể thêm COOKING nếu bạn muốn)
         if (order.getStatus() == OrderStatus.ACTIVE) {
             if (item.getStatus() == ItemStatus.READY || item.getStatus() == ItemStatus.SERVED) {
                 throw new BusinessRuleException("Không thể xoá món khi đang ở trạng thái: " + item.getStatus());
@@ -220,9 +205,7 @@ public class OrderService {
         return new ActionResponse("Đã xoá món khỏi order.");
     }
 
-    // =========================
-    // 4) Order detail
-    // =========================
+
     public OrderDetailDto getOrderDetail(Long orderId) {
         OrderEntity order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
@@ -246,9 +229,7 @@ public class OrderService {
         );
     }
 
-    // =========================
-    // 5) Update item status (ACTIVE only)
-    // =========================
+
     @Transactional
     public ActionResponse updateItemStatus(Long orderId, Long itemId, UpdateItemStatusRequest req) {
         OrderEntity order = orderRepository.findById(orderId)
@@ -275,7 +256,7 @@ public class OrderService {
             case PENDING -> item.setSentAt(now);
             case COOKING -> item.setCookingAt(now);
             case READY -> item.setReadyAt(now);
-            case SERVED -> item.setServedAt(now);
+case SERVED -> item.setServedAt(now);
             case CANCELED -> {
                 item.setCanceledAt(now);
                 if (req.cancelReason() != null && !req.cancelReason().isBlank()) {
@@ -319,9 +300,6 @@ public class OrderService {
         }
     }
 
-    // =========================
-    // 6) Bill
-    // =========================
     public BillDto getBill(Long orderId) {
         OrderEntity order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy order id=" + orderId));
@@ -347,7 +325,7 @@ public class OrderService {
 
         BigDecimal subtotal = billItems.stream()
                 .map(BillDto.BillItemDto::lineTotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
+.reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
 
         BigDecimal discount = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
@@ -371,9 +349,8 @@ public class OrderService {
         );
     }
 
-    // =========================
-    // 7) Checkout
-    // =========================
+  
+    
     @Transactional
     public CheckoutResponse checkout(Long orderId, CheckoutRequest req) {
         OrderEntity order = orderRepository.findById(orderId)
@@ -416,7 +393,7 @@ public class OrderService {
         PaymentEntity payment = new PaymentEntity();
         payment.setOrderId(orderId);
         payment.setSubtotal(subtotal);
-        payment.setDiscountAmount(discount);
+payment.setDiscountAmount(discount);
         payment.setTaxAmount(tax);
         payment.setServiceFeeAmount(serviceFee);
         payment.setTotalAmount(total);

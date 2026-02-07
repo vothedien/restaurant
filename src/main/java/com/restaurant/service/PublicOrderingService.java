@@ -50,27 +50,21 @@ public class PublicOrderingService {
         TableEntity table = tableRepository.findByQrToken(token)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy bàn với token=" + token));
 
-        // Chặn các trạng thái không phù hợp để gọi món
         if (table.getStatus() == TableStatus.CLEANING || table.getStatus() == TableStatus.REQUESTING_BILL) {
             throw new BusinessRuleException("Bàn hiện không thể gọi món. Trạng thái: " + table.getStatus());
         }
 
-        // Nếu bàn đang trống mà khách vào link -> coi như bắt đầu phục vụ
         if (table.getStatus() == TableStatus.AVAILABLE) {
             table.setStatus(TableStatus.OCCUPIED);
             tableRepository.save(table);
         }
 
-        // Lấy hoặc tạo order DRAFT cho bàn
         OrderEntity order = getOrCreateDraftOrderForTable(table);
 
-        // Xoá items cũ (vì FE submit là “bản cuối”)
         orderItemRepository.deleteByOrderId(order.getId());
 
-        // Validate menu items tồn tại + available
         Map<Long, MenuItemEntity> menuMap = loadAndValidateMenuItems(req);
 
-        // Tạo items mới (snapshot name/price)
         List<OrderItemEntity> newItems = req.items().stream().map(i -> {
             MenuItemEntity mi = menuMap.get(i.menuItemId());
 
@@ -81,7 +75,7 @@ public class PublicOrderingService {
             oi.setUnitPriceSnapshot(mi.getPrice());
             oi.setQty(i.qty());
             oi.setNote(i.note());
-            oi.setStatus(ItemStatus.DRAFT);  // khách gửi -> vẫn là DRAFT, chờ waiter confirm
+            oi.setStatus(ItemStatus.DRAFT);  
             oi.setCreatedAt(Instant.now());
             oi.setUpdatedAt(Instant.now());
             return oi;
@@ -89,13 +83,11 @@ public class PublicOrderingService {
 
         orderItemRepository.saveAll(newItems);
 
-        // Lưu ghi chú khách (nếu có)
         if (req.customerNote() != null && !req.customerNote().isBlank()) {
             order.setNote(req.customerNote());
             orderRepository.save(order);
         }
 
-        // Gắn current_order_id nếu chưa có
         if (table.getCurrentOrderId() == null) {
             table.setCurrentOrderId(order.getId());
             tableRepository.save(table);
@@ -121,7 +113,6 @@ public class PublicOrderingService {
         OrderEntity current = orderRepository.findById(table.getCurrentOrderId())
                 .orElseThrow(() -> new NotFoundException("current_order_id không hợp lệ"));
 
-        // Nếu đang có ACTIVE order -> MVP: chặn khách tự gọi thêm, yêu cầu gọi nhân viên
         if (current.getStatus() != OrderStatus.DRAFT) {
             throw new BusinessRuleException("Bàn đang có order " + current.getStatus() + ". Vui lòng gọi nhân viên để thêm món.");
         }

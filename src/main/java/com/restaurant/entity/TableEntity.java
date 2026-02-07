@@ -28,7 +28,6 @@ public class TableEntity {
     @Column(name = "qr_token", nullable = false, unique = true, length = 64)
     private String qrToken;
 
-    // FK tới orders.id (nullable). Để đơn giản, map dạng field + relation.
     @Column(name = "current_order_id")
     private Long currentOrderId;
 

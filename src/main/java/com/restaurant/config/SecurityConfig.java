@@ -24,14 +24,13 @@ public class SecurityConfig {
            .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                // Public
+                
                 .requestMatchers("/api/health", "/api/public/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/menu/**").permitAll()
 
-                // Auth check (login thật)
                 .requestMatchers(HttpMethod.GET, "/api/me").hasAnyRole("ADMIN","WAITER","CASHIER")
 
-                // ADMIN
+               
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
                 .requestMatchers(HttpMethod.GET,  "/api/orders/*/bill").hasAnyRole("CASHIER","ADMIN")

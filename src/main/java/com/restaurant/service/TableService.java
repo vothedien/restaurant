@@ -1,5 +1,12 @@
 package com.restaurant.service;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.List;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.restaurant.dto.TableDto;
 import com.restaurant.entity.OrderEntity;
 import com.restaurant.entity.TableEntity;
@@ -9,12 +16,6 @@ import com.restaurant.exception.BusinessRuleException;
 import com.restaurant.exception.NotFoundException;
 import com.restaurant.repository.OrderRepository;
 import com.restaurant.repository.TableRepository;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.util.List;
 
 @Service
 public class TableService {
@@ -51,7 +52,7 @@ public class TableService {
             order.setTableId(table.getId());
             order.setStatus(OrderStatus.ACTIVE);
             order.setCreatedAt(Instant.now());
-            order.setConfirmedAt(LocalDateTime.now()); // vì mở bàn bởi nhân viên -> order có hiệu lực
+            order.setConfirmedAt(LocalDateTime.now()); 
             OrderEntity saved = orderRepository.save(order);
 
             table.setCurrentOrderId(saved.getId());

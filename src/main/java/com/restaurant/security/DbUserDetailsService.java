@@ -28,11 +28,10 @@ public class DbUserDetailsService implements UserDetailsService {
             throw new DisabledException("User disabled: " + username);
         }
 
-        // roles("ADMIN") -> Spring tự thêm prefix ROLE_
         return User.builder()
                 .username(u.getUsername())
-                .password(u.getPasswordHash())   // BCrypt hash trong DB
-                .roles(u.getRole().name())       // ADMIN/WAITER/CASHIER
+                .password(u.getPasswordHash())   
+                .roles(u.getRole().name())       
                 .build();
     }
 }
